@@ -1,3 +1,6 @@
+// Some fancy copyright message here
+
+// Includes. Please keep them in alpha order
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -8,9 +11,10 @@
 #include <time.h>
 #include <unistd.h>
 
+// Defines
 #define PROCESS_NAME "reader"
 #define FIFO_NAME "TP_FIFO"
-#define INPUT_BUFFER_SIZE 2048
+#define INPUT_BUFFER_SIZE 2048 // Should be equal (at least) to writer.c's OUTPUT_BUFFER_SIZE
 
 #define LOG_FILENAME "log.txt"
 #define SIGN_FILENAME "sign.txt"
@@ -18,14 +22,36 @@
 #define LOG_PREFIX "DATA:"
 #define SIGN_PREFIX "SIGN:"
 
-static int fifo_fd = -1;
+// Private function protoypes
 
+/// @brief Cleanup handler called whenever exit() is being called.
+static void exit_handler();
+
+/// @brief SIGINT handler. The aim of this function is to notify the user
+/// what's happening and exit in a clean way.
+/// @param signo Should be SIGINT.
+static void signals_handler(int signo);
+
+/// @brief Helper function that initializes all the signal/exit handlers.
+/// @return 0 on success, -1 otherwise.
+static int initialize_signal_handlers();
+
+/// @brief Process the data received over the named FIFO and stores it on
+/// their corresponding files.
+/// @param buffer data to be processed. Must be NULL-terminated.
+static void process_input(const char* buffer);
+
+
+// Private global variables
+static int fifo_fd = -1;
 static FILE* flog = NULL;
 static FILE* fsign = NULL;
 
-void exit_handler()
+static void exit_handler()
 {
     printf("[%s] Attempt to close the files before exit.\n", PROCESS_NAME);
+
+    // Closing a NULL file results in UB, so let's check their status first
 
     if(flog) {
         if(fclose(flog) != 0) {
@@ -44,7 +70,7 @@ void exit_handler()
     }
 }
 
-void signals_handler(int signo)
+static void signals_handler(int signo)
 {
     write(1, "\nReceived SIGINT - User wants to quit application!\n", sizeof("\nReceived SIGINT - User wants to quit application!\n"));
     exit(EXIT_SUCCESS);
@@ -101,6 +127,10 @@ static void process_input(const char* buffer)
     }
 }
 
+/// @brief Main entry
+/// @param argc
+/// @param argv
+/// @return
 int main(int argc, char *argv[])
 {
     int bytes_read = -1;
@@ -114,8 +144,8 @@ int main(int argc, char *argv[])
 
     printf("[%s] Signal handlers registered successfully\n", PROCESS_NAME);
 
+    // Open log file. I decided to use append mode, to act more as a datalogger
     flog = fopen(LOG_FILENAME, "a");
-
     if(flog == NULL) {
        fprintf(stderr, "[%s] fopen error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
         exit(EXIT_FAILURE);
@@ -123,8 +153,8 @@ int main(int argc, char *argv[])
 
     printf("[%s] Created/Opened file %s\n", PROCESS_NAME, LOG_FILENAME);
 
+    // Open sign file. I decided to use append mode, to act more as a datalogger.
     fsign = fopen(SIGN_FILENAME, "a");
-
     if(fsign == NULL) {
         fprintf(stderr, "[%s] fopen error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
         exit(EXIT_FAILURE);
@@ -132,6 +162,7 @@ int main(int argc, char *argv[])
 
     printf("[%s] Created/Opened file %s\n", PROCESS_NAME, SIGN_FILENAME);
 
+    // Create the named FIFO. If it already exist just inform it and continue execution.
     if(mknod(FIFO_NAME, S_IFIFO | 0666, 0) != 0) {
         switch (errno)
         {
@@ -148,12 +179,14 @@ int main(int argc, char *argv[])
 
     printf("[%s] Waiting for writers...\n", PROCESS_NAME);
 
+    // Open the named FIFO. The program will block here until other process opens it.
     if((fifo_fd = open(FIFO_NAME, O_RDONLY) ) < 0) {
         fprintf(stderr, "[%s] Error opening FIFO %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
     } else {
         printf("[%s] Got a writer process on the FD %d\n", PROCESS_NAME, fifo_fd);
     }
 
+    // Loop until the read syscal returns a value <= 0
     do
     {
         bytes_read = read(fifo_fd, input_buffer, INPUT_BUFFER_SIZE);
