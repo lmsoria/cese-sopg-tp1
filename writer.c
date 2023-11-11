@@ -1,3 +1,6 @@
+// Some fancy copyright message here
+
+// Includes. Please keep them in alpha order
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -25,7 +28,7 @@
 /// @param buffer Data to be written.
 static void write_to_fifo(int fd, const char* buffer);
 
-/// @brief Helper function that initializes all the signal handlers.
+/// @brief Helper function that initializes all the signal/exit handlers.
 /// @return 0 on success, -1 otherwise.
 static int initialize_signal_handlers();
 
