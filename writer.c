@@ -9,8 +9,12 @@
 
 #define PROCESS_NAME "writer"
 #define FIFO_NAME "TP_FIFO"
-#define INPUT_BUFFER_SIZE 1024
-#define OUTPUT_BUFFER_SIZE 2048
+
+#define INPUT_BUFFER_SIZE 1024  // Maximum characters read from input terminal
+#define OUTPUT_BUFFER_SIZE 2048 // Yes, a few extra bytes should be enough. But it won't hurt
+
+#define LOG_PREFIX "DATA:"
+#define SIGN_PREFIX "SIGN:"
 
 static char output_buffer[OUTPUT_BUFFER_SIZE] = {0};
 static int fifo_fd = -1;
@@ -20,18 +24,15 @@ static int initialize_signal_handlers();
 
 void sigusr_handler(int signo)
 {
-    const char* SIGUSR1_MSG = "SIGN:1";
-    const char* SIGUSR2_MSG = "SIGN:2";
-
     switch (signo)
     {
     case SIGUSR1:
         write(1, "Received SIGUSR1\n", sizeof("Received SIGUSR1\n"));
-        strncpy(output_buffer, SIGUSR1_MSG, sizeof(output_buffer));
+        snprintf(output_buffer, sizeof(output_buffer), "%s%d", SIGN_PREFIX, 1);
         break;
     case SIGUSR2:
         write(1, "Received SIGUSR2\n", sizeof("Received SIGUSR2\n"));
-        strncpy(output_buffer, SIGUSR2_MSG, sizeof(output_buffer));
+        snprintf(output_buffer, sizeof(output_buffer), "%s%d", SIGN_PREFIX, 2);
         break;
     default:
         write(1, "Unknown signal\n", sizeof("Unknown signal\n"));
@@ -158,8 +159,8 @@ int main(int argc, char *argv[])
             input_buffer[len-1] = '\0';
         }
 
-        // Format the output string by prepending "DATA:" as header
-        snprintf(output_buffer, sizeof(output_buffer), "DATA:%s", input_buffer);
+        // Format the output string by prepending "DATA:" as prefix
+        snprintf(output_buffer, sizeof(output_buffer), "%s%s", LOG_PREFIX, input_buffer);
 
         write_to_fifo(fifo_fd, output_buffer);
     }
