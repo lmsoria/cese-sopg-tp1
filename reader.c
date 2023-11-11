@@ -5,11 +5,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #define PROCESS_NAME "reader"
 #define FIFO_NAME "TP_FIFO"
-#define INPUT_BUFFER_SIZE 1024
+#define INPUT_BUFFER_SIZE 2048
 
 #define LOG_FILENAME "log.txt"
 #define SIGN_FILENAME "sign.txt"
@@ -74,18 +75,26 @@ static int initialize_signal_handlers()
 
 static void process_input(const char* buffer)
 {
+    // Create a timestamp, just for fun
+    time_t current_time;
+    char time_buffer[24] = {0};
+
     if(buffer == NULL) {
         printf("[%s] Received NULL buffer. Returning...\n", PROCESS_NAME);
         return;
     }
 
+    // Format the time using strftime
+    time(&current_time);
+    strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S", localtime(&current_time));
+
     if (strncmp(buffer, LOG_PREFIX, sizeof(LOG_PREFIX) - 1) == 0) {
         // Cosmetic decision here: don't write the prefix for DATA messages, thus the buffer offset
-        fprintf(flog, "%s\n", buffer + sizeof(LOG_PREFIX) - 1);
+        fprintf(flog, "[%s] %s\n", time_buffer, buffer + sizeof(LOG_PREFIX) - 1);
         fflush(flog);
     } else if (strncmp(buffer, SIGN_PREFIX, sizeof(SIGN_PREFIX) - 1) == 0) {
         // For the signal messages is prettier to store the full message though
-        fprintf(fsign, "%s\n", buffer);
+        fprintf(fsign, "[%s] %s\n", time_buffer, buffer);
         fflush(fsign);
     } else {
         printf("[%s] The buffer does not have a recognized prefix.\n", PROCESS_NAME);
