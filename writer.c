@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,27 +20,29 @@
 static char output_buffer[OUTPUT_BUFFER_SIZE] = {0};
 static int fifo_fd = -1;
 
+volatile sig_atomic_t sigusr_flag = 0;
+
 static void write_to_fifo(int fd, const char* buffer);
 static int initialize_signal_handlers();
 
+/// @brief SIGUSR signal handler. Originally all the signal parsing and FIFO writing
+/// was made in here (and it worked!), but since snprintf() is not signal-safe, I decided
+/// setting a sig_atomic_t flag and process it later on a background thread.
+/// @param signo Should be SIGUSR1 or SIGUSR2.
 void sigusr_handler(int signo)
 {
     switch (signo)
     {
     case SIGUSR1:
-        write(1, "Received SIGUSR1\n", sizeof("Received SIGUSR1\n"));
-        snprintf(output_buffer, sizeof(output_buffer), "%s%d", SIGN_PREFIX, 1);
+        sigusr_flag = 1;
         break;
     case SIGUSR2:
-        write(1, "Received SIGUSR2\n", sizeof("Received SIGUSR2\n"));
-        snprintf(output_buffer, sizeof(output_buffer), "%s%d", SIGN_PREFIX, 2);
+        sigusr_flag = 2;
         break;
     default:
         write(1, "Unknown signal\n", sizeof("Unknown signal\n"));
         return;
     }
-
-    write_to_fifo(fifo_fd, output_buffer);
 }
 
 void signals_handler(int signo) {
@@ -113,16 +116,49 @@ static int initialize_signal_handlers()
     return ret;
 }
 
+/// @brief Background thread that will monitor sigusr_flag periodically.
+/// Yes, adding a thread may introduce shared resources issues (the output_buffer in this case),
+/// but for the scope of this project (wich will be run on a terminal by a human) it shouldn't bother.
+/// @param unused
+/// @return NULL
+void* background_thread(void* unused)
+{
+    while(1) {
+        if (sigusr_flag) {
+            // Perform the required actions
+            printf("[%s] Received SIGUSR%d\n", PROCESS_NAME, sigusr_flag);
+
+            snprintf(output_buffer, sizeof(output_buffer), "%s%d", SIGN_PREFIX, sigusr_flag);
+            write_to_fifo(fifo_fd, output_buffer);
+
+            // Reset sigusr_flag. Must be the latest thing to do.
+            sigusr_flag = 0;
+        }
+
+        // Introduce a delay to avoid high CPU usage
+        usleep(1000);
+    }
+    return NULL;
+}
+
 int main(int argc, char *argv[])
 {
     char input_buffer[INPUT_BUFFER_SIZE] = {0};
+    pthread_t sigusr_thread_id;
 
     printf("[%s] Application starts here. PID: %d\n", PROCESS_NAME, getpid());
+
+    // Create the monitor thread for SIGUSR signals.
+    if (pthread_create(&sigusr_thread_id, NULL, background_thread, NULL) != 0) {
+        perror("pthread_create");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("[%s] SIGUSR monitor thread started successfully\n", PROCESS_NAME);
 
     if(initialize_signal_handlers() == -1) {
         exit(EXIT_FAILURE);
     }
-
     printf("[%s] Signal handlers registered successfully\n", PROCESS_NAME);
 
     if(mknod(FIFO_NAME, S_IFIFO | 0666, 0) != 0) {
@@ -165,5 +201,6 @@ int main(int argc, char *argv[])
         write_to_fifo(fifo_fd, output_buffer);
     }
 
+    pthread_join(sigusr_thread_id, NULL);
     return 0;
 }
