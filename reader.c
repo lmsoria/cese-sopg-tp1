@@ -28,7 +28,7 @@ void exit_handler()
 
     if(flog) {
         if(fclose(flog) != 0) {
-            printf("[%s] flose error %d for file %s (%s)\n", PROCESS_NAME, errno, LOG_FILENAME, strerror(errno));
+            fprintf(stderr, "[%s] flose error %d for file %s (%s)\n", PROCESS_NAME, errno, LOG_FILENAME, strerror(errno));
         } else {
             printf("[%s] File %s closed successfuly.\n", PROCESS_NAME, LOG_FILENAME);
         }
@@ -36,7 +36,7 @@ void exit_handler()
 
     if(fsign) {
         if(fclose(fsign) != 0) {
-            printf("[%s] flose error %d for file %s (%s)\n", PROCESS_NAME, errno, SIGN_FILENAME, strerror(errno));
+            fprintf(stderr, "[%s] flose error %d for file %s (%s)\n", PROCESS_NAME, errno, SIGN_FILENAME, strerror(errno));
         } else {
             printf("[%s] File %s closed successfuly.\n", PROCESS_NAME, SIGN_FILENAME);
         }
@@ -56,7 +56,7 @@ static int initialize_signal_handlers()
 
     // First register a handler for the exit() call. Unfortunately an error won't update errno :(
     if ((ret = atexit(exit_handler)) != 0) {
-        printf("[%s] atexit error %d\n", PROCESS_NAME, ret);
+        fprintf(stderr, "[%s] atexit error %d\n", PROCESS_NAME, ret);
         return ret;
     }
 
@@ -66,7 +66,7 @@ static int initialize_signal_handlers()
 
     // For the reader process we only care about SIGINT signal (for the moment)
     if((ret = sigaction(SIGINT, &sa, NULL)) != 0) {
-        printf("[%s] sigaction error for SIGINT %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+        fprintf(stderr, "[%s] sigaction error for SIGINT %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
     }
 
     return ret;
@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
     flog = fopen(LOG_FILENAME, "a");
 
     if(flog == NULL) {
-        printf("[%s] fopen error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+       fprintf(stderr, "[%s] fopen error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
 
@@ -117,7 +117,7 @@ int main(int argc, char *argv[])
     fsign = fopen(SIGN_FILENAME, "a");
 
     if(fsign == NULL) {
-        printf("[%s] fopen error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+        fprintf(stderr, "[%s] fopen error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
 
@@ -130,7 +130,7 @@ int main(int argc, char *argv[])
             printf("[%s] FIFO node already exists. Continue...\n", PROCESS_NAME);
             break;
         default:
-            printf("[%s] mknod error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+            fprintf(stderr, "[%s] mknod error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
@@ -140,7 +140,7 @@ int main(int argc, char *argv[])
     printf("[%s] Waiting for writers...\n", PROCESS_NAME);
 
     if((fifo_fd = open(FIFO_NAME, O_RDONLY) ) < 0) {
-        printf("[%s] Error opening FIFO %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+        fprintf(stderr, "[%s] Error opening FIFO %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
     } else {
         printf("[%s] Got a writer process on the FD %d\n", PROCESS_NAME, fifo_fd);
     }
@@ -149,7 +149,7 @@ int main(int argc, char *argv[])
     {
         bytes_read = read(fifo_fd, input_buffer, INPUT_BUFFER_SIZE);
         if(bytes_read == -1) {
-            printf("[%s] read error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+            fprintf(stderr, "[%s] read error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
         } else {
             input_buffer[bytes_read] = '\0';
             printf("[%s] Read %d bytes\n", PROCESS_NAME, bytes_read);
