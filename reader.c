@@ -41,7 +41,6 @@ static int initialize_signal_handlers();
 /// @param buffer data to be processed. Must be NULL-terminated.
 static void process_input(const char* buffer);
 
-
 // Private global variables
 static int fifo_fd = -1;
 static FILE* flog = NULL;
