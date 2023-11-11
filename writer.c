@@ -27,6 +27,19 @@ void sigusr_handler(int signo)
     }
 }
 
+void sigpipe_handler(int signo) {
+    if(signo == SIGPIPE) {
+        write(1, "SIGPIPE - We're writing on a pipe that nobody is reading!\n", sizeof("SIGPIPE - We're writing on a pipe that nobody is reading!\n"));
+        if(remove(FIFO_NAME) == 0) {
+            write(1, "FIFO deleted successfully\n", sizeof("FIFO deleted successfully\n"));
+        } else {
+            write(1, "Unable to delete the FIFO\n", sizeof("Unable to delete the FIFO\n"));
+        }
+        write(1, "Exiting...\n", sizeof("Exiting...\n"));
+        exit(EXIT_FAILURE);
+    }
+}
+
 int main(int argc, char *argv[])
 {
     char output_buffer[BUFFER_SIZE] = {0};
@@ -48,6 +61,12 @@ int main(int argc, char *argv[])
 
     if(sigaction(SIGUSR2, &sa, NULL) != 0) {
         printf("[%s] sigaction error for SIGUSR2 %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    sa.sa_handler = sigpipe_handler;
+    if(sigaction(SIGPIPE, &sa, NULL) != 0) {
+        printf("[%s] sigaction error for SIGPIPE %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
 
