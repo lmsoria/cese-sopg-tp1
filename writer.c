@@ -1,11 +1,15 @@
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #define PROCESS_NAME "writer"
+#define FIFO_NAME "TP_FIFO"
+#define BUFFER_SIZE 1024
 
 void sigusr_handler(int signo)
 {
@@ -25,7 +29,11 @@ void sigusr_handler(int signo)
 
 int main(int argc, char *argv[])
 {
+    char output_buffer[BUFFER_SIZE] = {0};
     struct sigaction sa;
+
+    int fifo_fd = 0;
+    int bytes_written = 0;
 
     printf("[%s] Application starts here\n", PROCESS_NAME);
 
@@ -43,8 +51,28 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    if(mknod(FIFO_NAME, S_IFIFO | 0666, 0) != 0) {
+        printf("[%s] mknod error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    printf("[%s] Waiting for readers...\n", PROCESS_NAME);
+
+    if((fifo_fd = open(FIFO_NAME, O_WRONLY) ) < 0) {
+        printf("[%s] Error opening FIFO %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+    } else {
+        printf("[%s] Got a reader process on fd %d. Type some stuff\n", PROCESS_NAME, fifo_fd);
+    }
+
     while(1) {
-        sleep(2);
+        fgets(output_buffer, BUFFER_SIZE, stdin);
+
+        bytes_written = write(fifo_fd, output_buffer, strlen(output_buffer)-1);
+        if(bytes_written != -1) {
+			printf("[%s] Written %d bytes\n", PROCESS_NAME, bytes_written);
+        } else {
+            printf("[%s] write error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+        }
     }
 
     return 0;
