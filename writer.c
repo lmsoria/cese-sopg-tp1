@@ -50,7 +50,7 @@ void signals_handler(int signo) {
         exit_status = EXIT_FAILURE;
         break;
     case SIGINT:
-        write(1, "Received SIGINT - User wants to quit application!\n", sizeof("Received SIGINT - User wants to quit application!\n"));
+        write(1, "\nReceived SIGINT - User wants to quit application!\n", sizeof("\nReceived SIGINT - User wants to quit application!\n"));
         exit_status = EXIT_SUCCESS;
         break;
     default:
