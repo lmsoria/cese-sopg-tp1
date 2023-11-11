@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+// Defines
 #define PROCESS_NAME "writer"
 #define FIFO_NAME "TP_FIFO"
 
@@ -17,19 +18,60 @@
 #define LOG_PREFIX "DATA:"
 #define SIGN_PREFIX "SIGN:"
 
-static char output_buffer[OUTPUT_BUFFER_SIZE] = {0};
-static int fifo_fd = -1;
+// Private function protoypes
 
-volatile sig_atomic_t sigusr_flag = 0;
-
+/// @brief Write a chunk of characters to the named FIFO. The buffer must be NULL-terminated.
+/// @param fd Named FIFO file descriptor.
+/// @param buffer Data to be written.
 static void write_to_fifo(int fd, const char* buffer);
+
+/// @brief Helper function that initializes all the signal handlers.
+/// @return 0 on success, -1 otherwise.
 static int initialize_signal_handlers();
+
+/// @brief Cleanup handler called whenever exit() is being called.
+static void exit_handler();
 
 /// @brief SIGUSR signal handler. Originally all the signal parsing and FIFO writing
 /// was made in here (and it worked!), but since snprintf() is not signal-safe, I decided
 /// setting a sig_atomic_t flag and process it later on a background thread.
 /// @param signo Should be SIGUSR1 or SIGUSR2.
-void sigusr_handler(int signo)
+static void sigusr_handler(int signo);
+
+/// @brief SIGINT/SIGPIPE handler. The aim of this function is to notify the user
+/// what's happening and exit in a clean way.
+/// @param signo Should be SIGPIPE or SIGINT.
+static void signals_handler(int signo);
+
+/// @brief Background thread that will monitor sigusr_flag periodically.
+/// Yes, adding a thread may introduce shared resources issues (the output_buffer in this case),
+/// but for the scope of this project (wich will be run on a terminal by a human) it shouldn't bother.
+/// @param unused
+/// @return NULL
+static void* background_thread(void* unused);
+
+// Private global variables
+static char output_buffer[OUTPUT_BUFFER_SIZE] = {0};
+static int fifo_fd = -1;
+volatile sig_atomic_t sigusr_flag = 0;
+
+static void exit_handler()
+{
+    printf("[%s] Attempt to delete the FIFO before exit\n", PROCESS_NAME);
+
+    if(remove(FIFO_NAME) == 0) {
+        printf("[%s] FIFO deleted successfully\n", PROCESS_NAME);
+    } else {
+        printf("[%s] remove error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+    }
+
+    // In theory the C runtime system will cleanup the threads at exit, so there's no need
+    // to call pthread_join here.
+
+    printf("[%s] Exiting...\n", PROCESS_NAME);
+}
+
+static void sigusr_handler(int signo)
 {
     switch (signo)
     {
@@ -45,29 +87,29 @@ void sigusr_handler(int signo)
     }
 }
 
-void signals_handler(int signo) {
+static void signals_handler(int signo)
+{
 
     int exit_status = 0;
+
+    const char* SIGPIPE_MSG = "Received SIGPIPE - We're writing on a pipe that nobody is reading!\n";
+    const char* SIGINT_MSG = "\nReceived SIGINT - User wants to quit application!\n";
+
     switch (signo)
     {
     case SIGPIPE:
-        write(1, "Received SIGPIPE - We're writing on a pipe that nobody is reading!\n", sizeof("Received SIGPIPE - We're writing on a pipe that nobody is reading!\n"));
+        write(1, SIGPIPE_MSG, sizeof(SIGPIPE_MSG));
         exit_status = EXIT_FAILURE;
         break;
     case SIGINT:
-        write(1, "\nReceived SIGINT - User wants to quit application!\n", sizeof("\nReceived SIGINT - User wants to quit application!\n"));
+        write(1, SIGINT_MSG, sizeof(SIGINT_MSG));
         exit_status = EXIT_SUCCESS;
         break;
     default:
         break;
     }
 
-    if(remove(FIFO_NAME) == 0) {
-        write(1, "FIFO deleted successfully\n", sizeof("FIFO deleted successfully\n"));
-    } else {
-        write(1, "Unable to delete the FIFO\n", sizeof("Unable to delete the FIFO\n"));
-    }
-    write(1, "Exiting...\n", sizeof("Exiting...\n"));
+    // In any case just exit.
     exit(exit_status);
 }
 
@@ -91,10 +133,16 @@ static int initialize_signal_handlers()
     int ret = -1;
     struct sigaction sa;
 
+    // First stage: register a handler for the exit() call. Unfortunately an error won't update errno :(
+    if ((ret = atexit(exit_handler)) != 0) {
+        fprintf(stderr, "[%s] atexit error %d\n", PROCESS_NAME, ret);
+        return ret;
+    }
+
     sa.sa_flags = SA_RESTART;
     sigemptyset(&sa.sa_mask);
 
-    // First stage: register the handler for SIGUSR signals
+    // Second stage: register the handler for SIGUSR signals
     sa.sa_handler = sigusr_handler;
     if((ret = sigaction(SIGUSR1, &sa, NULL)) != 0) {
         printf("[%s] sigaction error for SIGUSR1 %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
@@ -106,7 +154,7 @@ static int initialize_signal_handlers()
         return ret;
     }
 
-    // Second stage: register the handler for SIGINT/SIGPIPE signals
+    // Third stage: register the handler for SIGINT/SIGPIPE signals
     sa.sa_handler = signals_handler;
     if((ret = sigaction(SIGPIPE, &sa, NULL)) != 0) {
         printf("[%s] sigaction error for SIGPIPE %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
@@ -121,12 +169,7 @@ static int initialize_signal_handlers()
     return ret;
 }
 
-/// @brief Background thread that will monitor sigusr_flag periodically.
-/// Yes, adding a thread may introduce shared resources issues (the output_buffer in this case),
-/// but for the scope of this project (wich will be run on a terminal by a human) it shouldn't bother.
-/// @param unused
-/// @return NULL
-void* background_thread(void* unused)
+static void* background_thread(void* unused)
 {
     while(1) {
         if (sigusr_flag) {
@@ -146,6 +189,10 @@ void* background_thread(void* unused)
     return NULL;
 }
 
+/// @brief Main entry
+/// @param argc
+/// @param argv
+/// @return
 int main(int argc, char *argv[])
 {
     char input_buffer[INPUT_BUFFER_SIZE] = {0};
@@ -166,6 +213,7 @@ int main(int argc, char *argv[])
     }
     printf("[%s] Signal handlers registered successfully\n", PROCESS_NAME);
 
+    // Create the named FIFO. If it already exist just inform it and continue execution.
     if(mknod(FIFO_NAME, S_IFIFO | 0666, 0) != 0) {
         switch (errno)
         {
@@ -182,6 +230,7 @@ int main(int argc, char *argv[])
 
     printf("[%s] Waiting for readers...\n", PROCESS_NAME);
 
+    // Open the named FIFO. The program will block here until other process opens it.
     if((fifo_fd = open(FIFO_NAME, O_WRONLY) ) < 0) {
         printf("[%s] Error opening FIFO %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
     } else {
@@ -189,6 +238,7 @@ int main(int argc, char *argv[])
     }
 
     while(1) {
+        // Read some text from the console
         if (fgets(input_buffer, sizeof(input_buffer), stdin) == NULL) {
             printf("[%s] fgets error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
             exit(EXIT_FAILURE);
@@ -206,6 +256,13 @@ int main(int argc, char *argv[])
         write_to_fifo(fifo_fd, output_buffer);
     }
 
-    pthread_join(sigusr_thread_id, NULL);
+    // The program should never reach here, but the join call is added just to be safe.
+    int result = pthread_join(sigusr_thread_id, NULL);
+    if (result == 0) {
+        printf("[%s] Monitor thread %ld ended successfully\n", PROCESS_NAME, sigusr_thread_id);
+    } else {
+        printf("[%s] phtread_join error %d\n", PROCESS_NAME, result);
+    }
+
     return 0;
 }
