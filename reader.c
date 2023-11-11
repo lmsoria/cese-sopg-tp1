@@ -11,7 +11,13 @@
 #define FIFO_NAME "TP_FIFO"
 #define INPUT_BUFFER_SIZE 1024
 
+#define LOG_FILENAME "log.txt"
+#define SIGN_FILENAME "sign.txt"
+
 static int fifo_fd = -1;
+
+static FILE* flog = NULL;
+static FILE* fsign = NULL;
 
 int main(int argc, char *argv[])
 {
@@ -19,6 +25,24 @@ int main(int argc, char *argv[])
     char input_buffer[INPUT_BUFFER_SIZE] = {0};
 
     printf("[%s] Application starts here. PID: %d\n", PROCESS_NAME, getpid());
+
+    flog = fopen(LOG_FILENAME, "a");
+
+    if(flog == NULL) {
+        printf("[%s] fopen error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    printf("[%s] Created/Opened file %s\n", PROCESS_NAME, LOG_FILENAME);
+
+    fsign = fopen(SIGN_FILENAME, "a");
+
+    if(fsign == NULL) {
+        printf("[%s] fopen error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    printf("[%s] Created/Opened file %s\n", PROCESS_NAME, SIGN_FILENAME);
 
     if(mknod(FIFO_NAME, S_IFIFO | 0666, 0) != 0) {
         switch (errno)
