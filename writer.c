@@ -9,22 +9,35 @@
 
 #define PROCESS_NAME "writer"
 #define FIFO_NAME "TP_FIFO"
-#define BUFFER_SIZE 1024
+#define INPUT_BUFFER_SIZE 1024
+#define OUTPUT_BUFFER_SIZE 2048
+
+static char output_buffer[OUTPUT_BUFFER_SIZE] = {0};
+static int fifo_fd = 0;
+
+static void write_to_fifo(int fd, const char* buffer);
 
 void sigusr_handler(int signo)
 {
+    const char* SIGUSR1_MSG = "SIGN:1";
+    const char* SIGUSR2_MSG = "SIGN:2";
+
     switch (signo)
     {
     case SIGUSR1:
-        write(1, "SIGUSR1\n", sizeof("SIGUSR1\n"));
+        write(1, "Received SIGUSR1\n", sizeof("Received SIGUSR1\n"));
+        strncpy(output_buffer, SIGUSR1_MSG, sizeof(output_buffer));
         break;
-        case SIGUSR2:
-        write(1, "SIGUSR2\n", sizeof("SIGUSR2\n"));
+    case SIGUSR2:
+        write(1, "Received SIGUSR2\n", sizeof("Received SIGUSR2\n"));
+        strncpy(output_buffer, SIGUSR2_MSG, sizeof(output_buffer));
         break;
     default:
         write(1, "Unknown signal\n", sizeof("Unknown signal\n"));
-        break;
+        return;
     }
+
+    write_to_fifo(fifo_fd, output_buffer);
 }
 
 void sigpipe_handler(int signo) {
@@ -40,13 +53,20 @@ void sigpipe_handler(int signo) {
     }
 }
 
+static void write_to_fifo(int fd, const char* buffer)
+{
+    int bytes_written = write(fd, buffer, strlen(buffer));
+    if(bytes_written != -1) {
+        printf("[%s] Written %d bytes\n", PROCESS_NAME, bytes_written);
+    } else {
+        printf("[%s] write error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+    }
+}
+
 int main(int argc, char *argv[])
 {
-    char output_buffer[BUFFER_SIZE] = {0};
+    char input_buffer[INPUT_BUFFER_SIZE] = {0};
     struct sigaction sa;
-
-    int fifo_fd = 0;
-    int bytes_written = 0;
 
     printf("[%s] Application starts here\n", PROCESS_NAME);
 
@@ -84,14 +104,21 @@ int main(int argc, char *argv[])
     }
 
     while(1) {
-        fgets(output_buffer, BUFFER_SIZE, stdin);
-
-        bytes_written = write(fifo_fd, output_buffer, strlen(output_buffer)-1);
-        if(bytes_written != -1) {
-			printf("[%s] Written %d bytes\n", PROCESS_NAME, bytes_written);
-        } else {
-            printf("[%s] write error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+        if (fgets(input_buffer, sizeof(input_buffer), stdin) == NULL) {
+            printf("[%s] fgets error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+            exit(EXIT_FAILURE);
         }
+
+        // Replace '\n' with '\0' before formatting the output string
+        size_t len = strlen(input_buffer);
+        if(len > 0 && input_buffer[len-1] == '\n') {
+            input_buffer[len-1] = '\0';
+        }
+
+        // Format the output string by prepending "DATA:" as header
+        snprintf(output_buffer, sizeof(output_buffer), "DATA:%s", input_buffer);
+
+        write_to_fifo(fifo_fd, output_buffer);
     }
 
     return 0;
