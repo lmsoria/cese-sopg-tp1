@@ -13,7 +13,7 @@
 #define OUTPUT_BUFFER_SIZE 2048
 
 static char output_buffer[OUTPUT_BUFFER_SIZE] = {0};
-static int fifo_fd = 0;
+static int fifo_fd = -1;
 
 static void write_to_fifo(int fd, const char* buffer);
 
