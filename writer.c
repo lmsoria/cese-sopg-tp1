@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
 {
     char input_buffer[INPUT_BUFFER_SIZE] = {0};
 
-    printf("[%s] Application starts here\n", PROCESS_NAME);
+    printf("[%s] Application starts here. PID: %d\n", PROCESS_NAME, getpid());
 
     if(initialize_signal_handlers() == -1) {
         exit(EXIT_FAILURE);
