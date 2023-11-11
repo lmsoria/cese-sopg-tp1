@@ -14,10 +14,33 @@
 #define LOG_FILENAME "log.txt"
 #define SIGN_FILENAME "sign.txt"
 
+#define LOG_PREFIX "DATA:"
+#define SIGN_PREFIX "SIGN:"
+
 static int fifo_fd = -1;
 
 static FILE* flog = NULL;
 static FILE* fsign = NULL;
+
+static void process_input(const char* buffer)
+{
+    if(buffer == NULL) {
+        printf("[%s] Received NULL buffer. Returning...\n", PROCESS_NAME);
+        return;
+    }
+
+    if (strncmp(buffer, LOG_PREFIX, sizeof(LOG_PREFIX) - 1) == 0) {
+        // Cosmetic decision here: don't write the prefix for DATA messages, thus the buffer offset
+        fprintf(flog, "%s\n", buffer + sizeof(LOG_PREFIX) - 1);
+        fflush(flog);
+    } else if (strncmp(buffer, SIGN_PREFIX, sizeof(SIGN_PREFIX) - 1) == 0) {
+        // For the signal messages is prettier to store the full message though
+        fprintf(fsign, "%s\n", buffer);
+        fflush(fsign);
+    } else {
+        printf("[%s] The buffer does not have a recognized prefix.\n", PROCESS_NAME);
+    }
+}
 
 int main(int argc, char *argv[])
 {
@@ -73,7 +96,8 @@ int main(int argc, char *argv[])
             printf("[%s] read error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
         } else {
             input_buffer[bytes_read] = '\0';
-            printf("[%s] Read %d bytes: \"%s\"\n", PROCESS_NAME, bytes_read, input_buffer);
+            printf("[%s] Read %d bytes\n", PROCESS_NAME, bytes_read);
+            process_input(input_buffer);
         }
     }
     while (bytes_read > 0);
