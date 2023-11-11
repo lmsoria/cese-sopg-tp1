@@ -125,8 +125,15 @@ int main(int argc, char *argv[])
     printf("[%s] Signal handlers registered successfully\n", PROCESS_NAME);
 
     if(mknod(FIFO_NAME, S_IFIFO | 0666, 0) != 0) {
-        printf("[%s] mknod error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
-        exit(EXIT_FAILURE);
+        switch (errno)
+        {
+        case EEXIST:
+            printf("[%s] FIFO node already exists. Continue...\n", PROCESS_NAME);
+            break;
+        default:
+            printf("[%s] mknod error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+            exit(EXIT_FAILURE);
+        }
     }
 
     printf("[%s] Created FIFO node %s \n", PROCESS_NAME, FIFO_NAME);
