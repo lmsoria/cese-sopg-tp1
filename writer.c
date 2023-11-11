@@ -16,6 +16,7 @@ static char output_buffer[OUTPUT_BUFFER_SIZE] = {0};
 static int fifo_fd = -1;
 
 static void write_to_fifo(int fd, const char* buffer);
+static int initialize_signal_handlers();
 
 void sigusr_handler(int signo)
 {
@@ -76,49 +77,66 @@ static void write_to_fifo(int fd, const char* buffer)
     }
 }
 
-int main(int argc, char *argv[])
+static int initialize_signal_handlers()
 {
-    char input_buffer[INPUT_BUFFER_SIZE] = {0};
+    int ret = -1;
     struct sigaction sa;
 
-    printf("[%s] Application starts here\n", PROCESS_NAME);
-
-    sa.sa_handler = sigusr_handler;
     sa.sa_flags = SA_RESTART;
     sigemptyset(&sa.sa_mask);
 
-    if(sigaction(SIGUSR1, &sa, NULL) != 0) {
+    // First stage: register the handler for SIGUSR signals
+    sa.sa_handler = sigusr_handler;
+    if((ret = sigaction(SIGUSR1, &sa, NULL)) != 0) {
         printf("[%s] sigaction error for SIGUSR1 %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
-        exit(EXIT_FAILURE);
+        return ret;
     }
 
-    if(sigaction(SIGUSR2, &sa, NULL) != 0) {
+    if((ret = sigaction(SIGUSR2, &sa, NULL)) != 0) {
         printf("[%s] sigaction error for SIGUSR2 %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
-        exit(EXIT_FAILURE);
+        return ret;
     }
 
+    // Second stage: register the handler for SIGINT/SIGPIPE signals
     sa.sa_handler = signals_handler;
-    if(sigaction(SIGPIPE, &sa, NULL) != 0) {
+    if((ret = sigaction(SIGPIPE, &sa, NULL)) != 0) {
         printf("[%s] sigaction error for SIGPIPE %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+        return ret;
+    }
+
+    if((ret = sigaction(SIGINT, &sa, NULL)) != 0) {
+        printf("[%s] sigaction error for SIGINT %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+        return ret;
+    }
+
+    return ret;
+}
+
+int main(int argc, char *argv[])
+{
+    char input_buffer[INPUT_BUFFER_SIZE] = {0};
+
+    printf("[%s] Application starts here\n", PROCESS_NAME);
+
+    if(initialize_signal_handlers() == -1) {
         exit(EXIT_FAILURE);
     }
 
-    if(sigaction(SIGINT, &sa, NULL) != 0) {
-        printf("[%s] sigaction error for SIGINT %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
-        exit(EXIT_FAILURE);
-    }
+    printf("[%s] Signal handlers registered successfully\n", PROCESS_NAME);
 
     if(mknod(FIFO_NAME, S_IFIFO | 0666, 0) != 0) {
         printf("[%s] mknod error %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
 
+    printf("[%s] Created FIFO node %s \n", PROCESS_NAME, FIFO_NAME);
+
     printf("[%s] Waiting for readers...\n", PROCESS_NAME);
 
     if((fifo_fd = open(FIFO_NAME, O_WRONLY) ) < 0) {
         printf("[%s] Error opening FIFO %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
     } else {
-        printf("[%s] Got a reader process on fd %d. Type some stuff\n", PROCESS_NAME, fifo_fd);
+        printf("[%s] Got a reader process on the FD %d. Type some stuff\n", PROCESS_NAME, fifo_fd);
     }
 
     while(1) {
