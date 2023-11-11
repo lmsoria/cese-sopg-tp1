@@ -22,6 +22,56 @@ static int fifo_fd = -1;
 static FILE* flog = NULL;
 static FILE* fsign = NULL;
 
+void exit_handler()
+{
+    printf("[%s] Attempt to close the files before exit.\n", PROCESS_NAME);
+
+    if(flog) {
+        if(fclose(flog) != 0) {
+            printf("[%s] flose error %d for file %s (%s)\n", PROCESS_NAME, errno, LOG_FILENAME, strerror(errno));
+        } else {
+            printf("[%s] File %s closed successfuly.\n", PROCESS_NAME, LOG_FILENAME);
+        }
+    }
+
+    if(fsign) {
+        if(fclose(fsign) != 0) {
+            printf("[%s] flose error %d for file %s (%s)\n", PROCESS_NAME, errno, SIGN_FILENAME, strerror(errno));
+        } else {
+            printf("[%s] File %s closed successfuly.\n", PROCESS_NAME, SIGN_FILENAME);
+        }
+    }
+}
+
+void signals_handler(int signo)
+{
+    write(1, "\nReceived SIGINT - User wants to quit application!\n", sizeof("\nReceived SIGINT - User wants to quit application!\n"));
+    exit(EXIT_SUCCESS);
+}
+
+static int initialize_signal_handlers()
+{
+    int ret = -1;
+    struct sigaction sa;
+
+    // First register a handler for the exit() call. Unfortunately an error won't update errno :(
+    if ((ret = atexit(exit_handler)) != 0) {
+        printf("[%s] atexit error %d\n", PROCESS_NAME, ret);
+        return ret;
+    }
+
+    sa.sa_handler = signals_handler;
+    sa.sa_flags = SA_RESTART;
+    sigemptyset(&sa.sa_mask);
+
+    // For the reader process we only care about SIGINT signal (for the moment)
+    if((ret = sigaction(SIGINT, &sa, NULL)) != 0) {
+        printf("[%s] sigaction error for SIGINT %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+    }
+
+    return ret;
+}
+
 static void process_input(const char* buffer)
 {
     if(buffer == NULL) {
@@ -48,6 +98,12 @@ int main(int argc, char *argv[])
     char input_buffer[INPUT_BUFFER_SIZE] = {0};
 
     printf("[%s] Application starts here. PID: %d\n", PROCESS_NAME, getpid());
+
+    if(initialize_signal_handlers() == -1) {
+        exit(EXIT_FAILURE);
+    }
+
+    printf("[%s] Signal handlers registered successfully\n", PROCESS_NAME);
 
     flog = fopen(LOG_FILENAME, "a");
 
