@@ -40,17 +40,30 @@ void sigusr_handler(int signo)
     write_to_fifo(fifo_fd, output_buffer);
 }
 
-void sigpipe_handler(int signo) {
-    if(signo == SIGPIPE) {
-        write(1, "SIGPIPE - We're writing on a pipe that nobody is reading!\n", sizeof("SIGPIPE - We're writing on a pipe that nobody is reading!\n"));
-        if(remove(FIFO_NAME) == 0) {
-            write(1, "FIFO deleted successfully\n", sizeof("FIFO deleted successfully\n"));
-        } else {
-            write(1, "Unable to delete the FIFO\n", sizeof("Unable to delete the FIFO\n"));
-        }
-        write(1, "Exiting...\n", sizeof("Exiting...\n"));
-        exit(EXIT_FAILURE);
+void signals_handler(int signo) {
+
+    int exit_status = 0;
+    switch (signo)
+    {
+    case SIGPIPE:
+        write(1, "Received SIGPIPE - We're writing on a pipe that nobody is reading!\n", sizeof("Received SIGPIPE - We're writing on a pipe that nobody is reading!\n"));
+        exit_status = EXIT_FAILURE;
+        break;
+    case SIGINT:
+        write(1, "Received SIGINT - User wants to quit application!\n", sizeof("Received SIGINT - User wants to quit application!\n"));
+        exit_status = EXIT_SUCCESS;
+        break;
+    default:
+        break;
     }
+
+    if(remove(FIFO_NAME) == 0) {
+        write(1, "FIFO deleted successfully\n", sizeof("FIFO deleted successfully\n"));
+    } else {
+        write(1, "Unable to delete the FIFO\n", sizeof("Unable to delete the FIFO\n"));
+    }
+    write(1, "Exiting...\n", sizeof("Exiting...\n"));
+    exit(exit_status);
 }
 
 static void write_to_fifo(int fd, const char* buffer)
@@ -84,9 +97,14 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    sa.sa_handler = sigpipe_handler;
+    sa.sa_handler = signals_handler;
     if(sigaction(SIGPIPE, &sa, NULL) != 0) {
         printf("[%s] sigaction error for SIGPIPE %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    if(sigaction(SIGINT, &sa, NULL) != 0) {
+        printf("[%s] sigaction error for SIGINT %d (%s)\n", PROCESS_NAME, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
 
