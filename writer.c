@@ -73,6 +73,11 @@ void signals_handler(int signo) {
 
 static void write_to_fifo(int fd, const char* buffer)
 {
+    if(buffer == NULL) {
+        printf("[%s] Received NULL buffer. Returning...\n", PROCESS_NAME);
+        return;
+    }
+
     int bytes_written = write(fd, buffer, strlen(buffer));
     if(bytes_written != -1) {
         printf("[%s] Written %d bytes\n", PROCESS_NAME, bytes_written);
